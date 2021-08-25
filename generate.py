@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
-from random import randint, random
+from random import choice, randint, random
+from typing import Tuple
 
 products = [
     'Люстра',
@@ -17,21 +18,41 @@ stocks = {
     for product_name in products
 }
 
+orders = dict()
 
-def product():
+
+def product() -> str:
     index = randint(0, len(products) - 1)
     return products[index]
 
 
-def stock(product_name, action):
+def shift(timestamp: datetime) -> datetime:
+    return timestamp - timedelta(seconds=randint(0, 30))
+
+
+def generate_order_id(timestamp: datetime) -> str:
+    return str(abs(hash(str(timestamp))))
+
+
+def sales(product_name: str) -> Tuple[int, int]:
     s = stocks[product_name]
+    delta = min(randint(1, 15), s)
+    s -= delta
+    stocks[product_name] = s
+    return s, delta
 
-    if action == 'sale':
-        s = max(0, s - randint(1, 15))
 
-    if action == 'delivery':
-        s += randint(5, 100)
+def returns(order_id: int) -> Tuple[int, int]:
+    product_name = orders[order_id]['product_name']
+    s = stocks[product_name]
+    delta = orders[order_id]['qty']
+    s += delta
+    return s, delta
 
+
+def deliveries(product_name: str) -> int:
+    s = stocks[product_name]
+    s += randint(5, 100)
     stocks[product_name] = s
     return s
 
@@ -50,11 +71,36 @@ create table stocks (
     ts timestamp,
     constraint pk_stocks primary key (product, ts)
 );
+
+create table orders (
+    order_id text,
+    product text,
+    qty numeric,
+    ts timestamp,
+    constraint pk_orders primary key (order_id)
+);
+
+create table orders_history (
+    order_id text,
+    status text,
+    ts timestamp,
+    constraint pk_orders_history primary key (order_id, ts)
+);
 """
 
-insert_template = (
+insert_stock_template = (
     "\ninsert into stocks (product, stock, ts)"
     + " values ('{product}', {stock}, '{ts}'::timestamp);"
+)
+
+insert_order_template = (
+    "\ninsert into orders (order_id, product, qty, ts)"
+    + " values ('{order_id}', '{product}', {qty}, '{ts}'::timestamp);"
+)
+
+insert_order_history_template = (
+    "\ninsert into orders_history (order_id, status, ts)"
+    + " values ('{order_id}', '{status}', '{ts}'::timestamp);"
 )
 
 if __name__ == '__main__':
@@ -66,24 +112,91 @@ if __name__ == '__main__':
         else:
             start_date = time(start_date)
 
-        product_name = product()
+        if orders:
+            if random() < 0.1:
+                order_id = choice(list(orders.keys()))
+                s, delta = returns(order_id)
+                product_name = orders[order_id]['product_name']
+                del orders[order_id]
 
+                script += insert_order_history_template.format(
+                    order_id=order_id,
+                    status='CANCELLED',
+                    ts=shift(start_date)
+                )
+
+                script += insert_stock_template.format(
+                    product=product_name,
+                    stock=s,
+                    ts=start_date
+                )
+
+                continue
+
+            delete_order_id = None
+            for order_id in orders:
+                interval_hours = (
+                    (start_date - orders[order_id]['ts'])
+                    .total_seconds() // 3600
+                )
+
+                if random() < interval_hours / 72:
+                    delete_order_id = order_id
+
+                    script += insert_order_history_template.format(
+                        order_id=order_id,
+                        status='COMPLETED',
+                        ts=start_date
+                    )
+
+                    break
+
+            if delete_order_id is not None:
+                del orders[delete_order_id]
+                continue
+
+        product_name = product()
         s = stocks[product_name]
         if stocks[product_name] == 0:
             if random() < 0.33:
-                s = stock(product_name, action='delivery')
+                s = deliveries(product_name)
 
             else:
                 continue
 
         else:
             if random() < 0.1:
-                s = stock(product_name, action='delivery')
+                s = deliveries(product_name)
 
             else:
-                s = stock(product_name, action='sale')
+                if random() < 0.5:
+                    order_id = generate_order_id(start_date)
+                    s, delta = sales(product_name)
+                    ts = shift(start_date)
 
-        script += insert_template.format(
+                    orders[order_id] = {
+                        'product_name': product_name,
+                        'qty': delta,
+                        'ts': ts
+                    }
+
+                    script += insert_order_template.format(
+                        order_id=order_id,
+                        product=product_name,
+                        qty=delta,
+                        ts=ts
+                    )
+
+                    script += insert_order_history_template.format(
+                        order_id=order_id,
+                        status='CREATED',
+                        ts=ts
+                    )
+
+                else:
+                    s, delta = sales(product_name)
+
+        script += insert_stock_template.format(
             product=product_name,
             stock=s,
             ts=start_date

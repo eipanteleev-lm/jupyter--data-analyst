@@ -28,6 +28,11 @@ services:
       - 8888:8888
     volumes:
       - "./notebooks:/home/jovyan/work"
+    command: [
+      "start-notebook.sh", 
+      "--NotebookApp.password=sha1:2b9c851723c3:007631397913934b4042ef2c1e29f67e839d800c",
+      "--no-browser"
+    ]
 
 
 
