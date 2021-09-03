@@ -20,4 +20,4 @@ docker-compose up -d --build
 
 Пароль от Jupyter Notebook: `test2021`
 
-
+Результатом выполнения задания будет файл Jupyter Notebook `Task.ipynb` с кодом и результатами выполнения задания.
