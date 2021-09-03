@@ -3,19 +3,19 @@ from random import choice, randint, random
 from typing import Tuple
 
 products = [
-    'Люстра',
-    'Лампочка',
-    'Газонокосилка',
-    'Камин',
-    'Перфоратор',
-    'Отвертка',
-    'Шпатель',
-    'Швабра'
+    ('Люстра', 2000),
+    ('Лампочка', 200),
+    ('Газонокосилка', 18000),
+    ('Камин', 20000),
+    ('Перфоратор', 7000),
+    ('Отвертка', 250),
+    ('Шпатель', 300),
+    ('Швабра', 1500)
 ]
 
 stocks = {
     product_name: randint(0, 100)
-    for product_name in products
+    for product_name, _ in products
 }
 
 orders = dict()
@@ -23,7 +23,7 @@ orders = dict()
 
 def product() -> str:
     index = randint(0, len(products) - 1)
-    return products[index]
+    return products[index][0]
 
 
 def shift(timestamp: datetime) -> datetime:
@@ -65,6 +65,12 @@ start_date = datetime(2021, 7, 19, 8)
 end_date = datetime(2021, 7, 25, 22)
 
 script = """
+create table products (
+    product text,
+    price numeric,
+    constraint pk_products primary key (product)
+);
+
 create table stocks (
     product text,
     stock numeric,
@@ -88,6 +94,11 @@ create table orders_history (
 );
 """
 
+insert_product_template = (
+    "\ninsert into products (product, price)"
+    + " values ('{product}', {price});"
+)
+
 insert_stock_template = (
     "\ninsert into stocks (product, stock, ts)"
     + " values ('{product}', {stock}, '{ts}'::timestamp);"
@@ -104,6 +115,20 @@ insert_order_history_template = (
 )
 
 if __name__ == '__main__':
+    for product_name, price in products:
+        script += insert_product_template.format(
+            product=product_name,
+            price=price
+        )
+
+        script += insert_stock_template.format(
+            product=product_name,
+            stock=stocks[product_name],
+            ts=start_date
+        )
+
+    start_date = time(start_date)
+
     while start_date < end_date:
 
         if start_date.hour > 22:
